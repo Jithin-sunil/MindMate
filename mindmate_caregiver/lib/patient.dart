@@ -1,8 +1,11 @@
-import 'dart:io'; // For File handling
+import 'dart:io'; 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart'; // For Photo
+import 'package:image_picker/image_picker.dart'; 
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:mindmate_caregiver/main.dart'; // Import supabase client
+import 'package:mindmate_caregiver/main.dart'; 
+
+const String mySupabaseUrl = 'https://ntwdneuosxsgdkzzjbvc.supabase.co'; 
+const String mySupabaseKey = 'sb_publishable_gizGesbd1JfJ-8i21-FfFQ_wnjgfrkz';
 
 class AddPatientScreen extends StatefulWidget {
   const AddPatientScreen({super.key});
@@ -14,152 +17,150 @@ class AddPatientScreen extends StatefulWidget {
 class _AddPatientScreenState extends State<AddPatientScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  // --- CONTROLLERS ---
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController();
+  final TextEditingController _dobController = TextEditingController();
   final TextEditingController _conditionController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
-  final TextEditingController _languageController = TextEditingController();
+  // Login Credentials
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
+  // --- STATE VARIABLES ---
   String? _selectedGender;
   final List<String> _genders = ['Male', 'Female', 'Other'];
-
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
+  bool _isPasswordVisible = false; 
+  int? _calculatedAge; 
 
+  // --- PICK IMAGE MODAL ---
   void _showImagePickerOptions() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.teal),
+              title: const Text('Choose from Gallery'),
+              onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.gallery); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera, color: Colors.teal),
+              title: const Text('Take a Photo'),
+              onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.camera); },
+            ),
+          ],
+        ),
       ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Colors.teal),
-                title: const Text('Choose from Gallery'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera, color: Colors.teal),
-                title: const Text('Take a Photo'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _pickImage(ImageSource.camera);
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
     );
   }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source, 
-        maxWidth: 600, 
-        imageQuality: 80, 
-      );
-      if (pickedFile != null) {
-        setState(() {
-          _imageFile = File(pickedFile.path);
-        });
-      }
+      final XFile? picked = await _picker.pickImage(source: source, maxWidth: 600, imageQuality: 80);
+      if (picked != null) setState(() => _imageFile = File(picked.path));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error picking image: $e")),
-        );
-      }
+      debugPrint("Error: $e");
     }
   }
 
-  // --- FUNCTION: SAVE PATIENT ---
+  // --- SELECT DATE ---
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(1960),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: Colors.teal, onPrimary: Colors.white, onSurface: Colors.black),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _dobController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+        _calculatedAge = DateTime.now().year - picked.year;
+      });
+    }
+  }
+
+  // --- SAVE PATIENT & CREATE AUTH USER ---
   Future<void> _savePatient() async {
     if (!_formKey.currentState!.validate()) return;
-
     if (_selectedGender == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Please select a gender")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select Gender")));
+      return;
+    }
+    if (_calculatedAge == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select Date of Birth")));
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) throw "User not logged in";
+      // 1. Get Current Caregiver ID
+      final caregiverUser = supabase.auth.currentUser;
+      if (caregiverUser == null) throw "Caregiver not logged in";
 
+      // 2. Upload Photo (Optional)
       String? photoUrl;
-
-      // 1. Upload Photo (if selected)
       if (_imageFile != null) {
-        final String path =
-            'patients/${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-        // Upload to bucket named 'patients'
-        await supabase.storage.from('patients').upload(
-          path,
-          _imageFile!,
-          fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
-        );
-
-        // Get Public URL
+        // We use the Caregiver ID in the path to ensure permission to upload
+        final path = 'patients/${caregiverUser.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await supabase.storage.from('patients').upload(path, _imageFile!);
         photoUrl = supabase.storage.from('patients').getPublicUrl(path);
       }
 
-      // 2. Insert Data into 'tbl_patient'
+      // 3. CREATE PATIENT AUTH USER (Using Secondary Client)
+      
+     final tempClient = SupabaseClient(mySupabaseUrl, mySupabaseKey);
+      
+      final AuthResponse authResponse = await tempClient.auth.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (authResponse.user == null) {
+        throw "Failed to create authentication account for patient.";
+      }
+
+      final String newPatientAuthId = authResponse.user!.id;
+
+      // 4. INSERT DATA INTO TBL_PATIENT
+      // We link the 'patient_id' to the Auth ID we just created
       await supabase.from('tbl_patient').insert({
+        'patient_id': newPatientAuthId, // IMPORTANT: Links Auth to DB
         'patient_name': _nameController.text.trim(),
-        'patient_age': int.parse(_ageController.text.trim()),
+        'patient_age': _calculatedAge,
         'patient_gender': _selectedGender,
+        'patient_email': _emailController.text.trim(),       
+        'patient_password': _passwordController.text.trim(), 
         'patient_medical_condition': _conditionController.text.trim(),
         'emergency_contact': _contactController.text.trim(),
-        'language_preference': _languageController.text.trim(),
-        'caregiver_id': user.id,
+        'caregiver_id': caregiverUser.id, // Linked to current caregiver
         'patient_doj': DateTime.now().toIso8601String(),
         'patient_photo': photoUrl,
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Patient Added Successfully!"),
-            backgroundColor: Colors.teal,
-            behavior: SnackBarBehavior.floating,
-          ),
+          const SnackBar(content: Text("Patient Account & Auth Created Successfully!"), backgroundColor: Colors.teal),
         );
-        Navigator.pop(context); // Go back
+        Navigator.pop(context);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error: ${e.toString()}"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      print("Error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -169,11 +170,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text("Add New Patient"),
-        backgroundColor: Colors.teal,
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text("Add New Patient"), backgroundColor: Colors.teal, elevation: 0),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Form(
@@ -181,97 +178,71 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- 1. PHOTO UPLOAD SECTION (UPDATED) ---
+              // --- PHOTO UPLOAD ---
               Center(
                 child: GestureDetector(
-                  onTap: _showImagePickerOptions, // <--- CALL THE POPUP HERE
+                  onTap: _showImagePickerOptions,
                   child: Stack(
                     children: [
                       Container(
-                        width: 110,
-                        height: 110,
+                        width: 110, height: 110,
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.grey.shade300,
-                            width: 2,
-                          ),
-                          image:
-                              _imageFile != null
-                                  ? DecorationImage(
-                                    image: FileImage(_imageFile!),
-                                    fit: BoxFit.cover,
-                                  )
-                                  : null,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
+                          color: Colors.white, shape: BoxShape.circle,
+                          border: Border.all(color: Colors.grey.shade300, width: 2),
+                          image: _imageFile != null ? DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover) : null,
                         ),
-                        child:
-                            _imageFile == null
-                                ? const Icon(
-                                  Icons.person,
-                                  size: 60,
-                                  color: Colors.grey,
-                                )
-                                : null,
+                        child: _imageFile == null ? const Icon(Icons.person, size: 60, color: Colors.grey) : null,
                       ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Colors.teal,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
+                      Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.teal, shape: BoxShape.circle), child: const Icon(Icons.camera_alt, color: Colors.white, size: 20))),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
-              const Center(
-                child: Text(
-                  "Tap to upload photo",
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-              ),
               const SizedBox(height: 30),
 
-              // --- 2. PERSONAL DETAILS ---
-              const Text(
-                "Personal Details",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
+              // --- CREDENTIALS SECTION ---
+              const Text("Account Credentials", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal)),
               const SizedBox(height: 15),
-
-              _buildTextField(
-                _nameController,
-                "Patient Name",
-                Icons.person_outline,
-              ),
+              _buildTextField(_emailController, "Patient Email", Icons.email, TextInputType.emailAddress),
               const SizedBox(height: 15),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: !_isPasswordVisible,
+                validator: (val) => val!.length < 6 ? "Min 6 chars" : null,
+                decoration: InputDecoration(
+                  labelText: "Create Password",
+                  prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true, fillColor: Colors.white,
+                ),
+              ),
+              const Divider(height: 40),
 
+              // --- PERSONAL DETAILS ---
+              const Text("Personal Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 15),
+              
+              _buildTextField(_nameController, "Patient Name", Icons.person_outline),
+              const SizedBox(height: 15),
+              
               Row(
                 children: [
                   Expanded(
-                    child: _buildTextField(
-                      _ageController,
-                      "Age",
-                      Icons.calendar_today,
-                      TextInputType.number,
+                    child: TextFormField(
+                      controller: _dobController,
+                      readOnly: true,
+                      onTap: () => _selectDate(context),
+                      validator: (val) => val!.isEmpty ? "Required" : null,
+                      decoration: InputDecoration(
+                        labelText: "Date of Birth",
+                        prefixIcon: const Icon(Icons.calendar_month, color: Colors.grey),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true, fillColor: Colors.white,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 15),
@@ -281,91 +252,34 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                       decoration: InputDecoration(
                         labelText: "Gender",
                         prefixIcon: const Icon(Icons.male),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 12,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true, fillColor: Colors.white,
                       ),
-                      items:
-                          _genders.map((String gender) {
-                            return DropdownMenuItem(
-                              value: gender,
-                              child: Text(gender),
-                            );
-                          }).toList(),
+                      items: _genders.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
                       onChanged: (val) => setState(() => _selectedGender = val),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
-
-              _buildTextField(
-                _languageController,
-                "Language Preference",
-                Icons.language,
-              ),
+              
               const SizedBox(height: 25),
 
-              // --- 3. MEDICAL INFO ---
-              const Text(
-                "Medical Information",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
+              // --- MEDICAL INFO ---
+              const Text("Medical Information", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 15),
-
-              _buildTextField(
-                _conditionController,
-                "Medical Condition (e.g., Dementia)",
-                Icons.medical_services_outlined,
-              ),
+              _buildTextField(_conditionController, "Medical Condition", Icons.medical_services_outlined),
               const SizedBox(height: 15),
-
-              _buildTextField(
-                _contactController,
-                "Emergency Contact Number",
-                Icons.phone_in_talk,
-                TextInputType.phone,
-              ),
+              _buildTextField(_contactController, "Emergency Contact", Icons.phone_in_talk, TextInputType.phone),
               const SizedBox(height: 30),
 
-              // --- 4. SUBMIT BUTTON ---
+              // --- SUBMIT BUTTON ---
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _isLoading ? null : _savePatient,
-                  icon:
-                      _isLoading
-                          ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                          : const Icon(Icons.save),
-                  label: Text(
-                    _isLoading ? "Saving..." : "Save Patient Record",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
-                  ),
+                  icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
+                  label: Text(_isLoading ? "Creating Account..." : "Create Patient Account", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 ),
               ),
             ],
@@ -375,27 +289,16 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
     );
   }
 
-  // Helper Widget for Text Fields
-  Widget _buildTextField(
-    TextEditingController controller,
-    String label,
-    IconData icon, [
-    TextInputType type = TextInputType.text,
-  ]) {
+  Widget _buildTextField(TextEditingController controller, String label, IconData icon, [TextInputType type = TextInputType.text]) {
     return TextFormField(
       controller: controller,
       keyboardType: type,
-      validator: (val) => val == null || val.isEmpty ? "Required" : null,
+      validator: (val) => val!.isEmpty ? "Required" : null,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: Colors.grey[600]),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        filled: true,
-        fillColor: Colors.white,
+        filled: true, fillColor: Colors.white,
       ),
     );
   }

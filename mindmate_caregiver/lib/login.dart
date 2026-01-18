@@ -16,7 +16,7 @@ class _CaregiverLoginScreenState extends State<CaregiverLoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
-  bool _isLoading = false; // Added loading state
+  bool _isLoading = false; 
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -40,7 +40,6 @@ class _CaregiverLoginScreenState extends State<CaregiverLoginScreen> {
       }
 
       // 2. Check Role & Status in 'tbl_caregiver'
-      // We check if this email exists and is active
       final data = await supabase
           .from('tbl_caregiver')
           .select()
@@ -53,15 +52,31 @@ class _CaregiverLoginScreenState extends State<CaregiverLoginScreen> {
         throw "Access Denied: You are not registered as a Caregiver.";
       }
 
-      if (data['caregiver_status'] != 1) {
+      // --- STATUS CHECK LOGIC ---
+      final int status = data['caregiver_status'] ?? 0; // Default to 0 if null
+
+      if (status == 0) {
+        // PENDING
         await supabase.auth.signOut();
-        throw "Your account is currently ${data['caregiver_status']}. Please wait for Admin approval.";
+        throw "Your account is Pending approval. Please wait for Admin verification.";
+      } else if (status == 2) {
+        // BLOCKED
+        await supabase.auth.signOut();
+        throw "Your account has been Blocked. Please contact support.";
+      } else if (status != 1) {
+        // UNKNOWN STATUS
+        await supabase.auth.signOut();
+        throw "Invalid account status. Please contact Admin.";
       }
 
-      // 3. Success!
+      // IF STATUS IS 1 (Active) -> Proceed to Home
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Login Successful!"), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text("Login Successful!"), 
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
         );
         Navigator.pushReplacement(
           context,
@@ -163,7 +178,7 @@ class _CaregiverLoginScreenState extends State<CaregiverLoginScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // --- LOGIN BUTTON (UPDATED) ---
+                    // --- LOGIN BUTTON ---
                     ElevatedButton(
                       onPressed: _isLoading ? null : _login, // Disable if loading
                       style: ElevatedButton.styleFrom(

@@ -29,12 +29,61 @@ class _CaregiverRegistrationScreenState extends State<CaregiverRegistrationScree
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
+  // --- FUNCTION: SHOW OPTIONS (Gallery or Camera) ---
+  void _showPickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.teal),
+                title: const Text('Photo Library'),
+                onTap: () {
+                  _pickImage(ImageSource.gallery);
+                  Navigator.of(context).pop();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera, color: Colors.teal),
+                title: const Text('Camera'),
+                onTap: () {
+                  _pickImage(ImageSource.camera);
+                  Navigator.of(context).pop();
+                },
+              ),
+              const SizedBox(height: 20), // Bottom spacing
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // --- FUNCTION: PICK IMAGE ---
-  Future<void> _pickImage() async {
+  Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
-        source: ImageSource.gallery, // Change to ImageSource.camera for camera
+        source: source, // Use the source passed from the sheet
         maxWidth: 600, // Optimize image size
+        imageQuality: 80, // Compress slightly
       );
       if (pickedFile != null) {
         setState(() {
@@ -50,12 +99,6 @@ class _CaregiverRegistrationScreenState extends State<CaregiverRegistrationScree
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     
-    // Optional: Enforce photo upload
-    // if (_imageFile == null) {
-    //   _showError("Please upload a profile photo.");
-    //   return;
-    // }
-
     setState(() => _isLoading = true);
 
     try {
@@ -78,7 +121,7 @@ class _CaregiverRegistrationScreenState extends State<CaregiverRegistrationScree
       // 2. Upload Photo (If selected)
       if (_imageFile != null) {
         final String userId = res.user!.id;
-        final String path = 'caregivers/$userId/profile.jpg'; // Unique path
+        final String path = 'caregivers/$userId/profile_${DateTime.now().millisecondsSinceEpoch}.jpg'; 
 
         // Upload to Supabase Storage bucket named 'profiles'
         await supabase.storage.from('profiles').upload(
@@ -98,8 +141,7 @@ class _CaregiverRegistrationScreenState extends State<CaregiverRegistrationScree
         'caregiver_email': email,
         'caregiver_contact': phone,
         'caregiver_address': address,
-        'caregiver_password': password, 
-        'caregiver_status': 1, // 'Active' or 'Pending'
+        'caregiver_password': password,
         'caregiver_doj': DateTime.now().toIso8601String(),
         'caregiver_photo': photoUrl, // Save the URL here
       });
@@ -152,7 +194,7 @@ class _CaregiverRegistrationScreenState extends State<CaregiverRegistrationScree
               children: [
                 // --- PROFILE PHOTO UPLOAD (UPDATED) ---
                 GestureDetector(
-                  onTap: _pickImage,
+                  onTap: _showPickerOptions, // <--- CHANGED TO SHOW MENU
                   child: Stack(
                     children: [
                       Container(

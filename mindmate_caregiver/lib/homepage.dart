@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mindmate_caregiver/profile.dart';
+import 'package:mindmate_caregiver/manage_patients.dart';
+import 'package:mindmate_caregiver/profile.dart';     // Ensure this matches your file name
 
 class CaregiverHomeScreen extends StatefulWidget {
   const CaregiverHomeScreen({super.key});
@@ -11,10 +12,18 @@ class CaregiverHomeScreen extends StatefulWidget {
 class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
   int _currentIndex = 0;
 
+  // List of screens for the bottom navigation
+  final List<Widget> _pages = [
+    const HomeDashboard(),        // 0: Dashboard (Full UI restored below)
+    const ManagePatientsScreen(), // 1: Patients List
+    const Center(child: Text("Chat Screen")), // 2: Chat Placeholder
+    const SizedBox(),             // 3: Settings (Handled by function)
+  ];
+
   // Function to handle navigation logic
   void _onTabTapped(int index) {
     if (index == 3) {
-      // 2. IF SETTINGS TAB (Index 3) IS TAPPED -> GO TO PROFILE
+      // 3. SETTINGS TAB -> PROFILE
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const CaregiverProfileScreen()),
@@ -29,7 +38,8 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), // Light grey background
+      backgroundColor: const Color(0xFFF5F7FA),
+      
       // --- APP BAR ---
       appBar: AppBar(
         backgroundColor: Colors.teal,
@@ -42,20 +52,12 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {},
-          ),
-          
-          // 3. PROFILE ICON NAVIGATION
+          IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: GestureDetector(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const CaregiverProfileScreen()),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const CaregiverProfileScreen()));
               },
               child: const CircleAvatar(
                 backgroundColor: Colors.white24,
@@ -69,46 +71,58 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
       // --- BOTTOM NAVIGATION ---
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: _onTabTapped, // Use the custom function
+        onTap: _onTabTapped,
         selectedItemColor: Colors.teal,
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: false,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.people), label: "Patients"),
+          BottomNavigationBarItem(icon: Icon(Icons.people), label: "Patients"), // Index 1
           BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: "Chat"),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: "Settings"),
         ],
       ),
 
-      // --- MAIN BODY ---
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. PATIENT STATUS CARD
-            _buildPatientStatusCard(),
-            const SizedBox(height: 25),
+      // --- MAIN BODY (SWITCHES BASED ON TAB) ---
+      body: _pages[_currentIndex],
+    );
+  }
+}
 
-            // 2. QUICK ACTIONS GRID
-            const Text("Quick Actions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 15),
-            _buildQuickActionsGrid(),
-            const SizedBox(height: 25),
+// ==============================================================================
+// 1. HOME DASHBOARD WIDGET (FULL UI RESTORED)
+// ==============================================================================
+class HomeDashboard extends StatelessWidget {
+  const HomeDashboard({super.key});
 
-            // 3. RECENT ALERTS LIST
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Recent Alerts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                TextButton(onPressed: () {}, child: const Text("View All", style: TextStyle(color: Colors.teal))),
-              ],
-            ),
-            _buildRecentAlerts(),
-          ],
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. PATIENT STATUS CARD
+          _buildPatientStatusCard(),
+          const SizedBox(height: 25),
+
+          // 2. QUICK ACTIONS GRID
+          const Text("Quick Actions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 15),
+          _buildQuickActionsGrid(),
+          const SizedBox(height: 25),
+
+          // 3. RECENT ALERTS LIST
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Recent Alerts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              TextButton(onPressed: () {}, child: const Text("View All", style: TextStyle(color: Colors.teal))),
+            ],
+          ),
+          _buildRecentAlerts(),
+        ],
       ),
     );
   }
@@ -139,7 +153,9 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                 ),
                 child: const CircleAvatar(
                   radius: 30,
-                  backgroundImage: NetworkImage('https://via.placeholder.com/150'), // Replace with Patient Photo
+                  // Use a placeholder if no image
+                  backgroundImage: NetworkImage('https://via.placeholder.com/150'), 
+                  backgroundColor: Colors.grey,
                 ),
               ),
               const SizedBox(width: 15),
@@ -256,9 +272,18 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                 color: index == 0 ? Colors.red : Colors.blue,
               ),
             ),
-            title: Text(index == 0 ? "Left Safe Zone" : "Medicine Reminder", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            subtitle: Text(index == 0 ? "Patient moved out of 'Home' zone" : "Donepezil 5mg due", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-            trailing: Text("${index + 1}h ago", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            title: Text(
+              index == 0 ? "Left Safe Zone" : "Medicine Reminder",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            subtitle: Text(
+              index == 0 ? "Patient moved out of 'Home' zone" : "Donepezil 5mg due",
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+            trailing: Text(
+              "${index + 1}h ago",
+              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            ),
           ),
         );
       },

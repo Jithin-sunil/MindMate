@@ -26,9 +26,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
 
       // OPTIONAL: Update password in your custom table if you are keeping a record (NOT RECOMMENDED for security, but requested in your schema)
-      // await supabase.from('tbl_caregiver').update({
-      //   'caregiver_password': _newPassController.text.trim()
-      // }).eq('caregiver_id', supabase.auth.currentUser!.id);
+      await supabase.from('tbl_caregiver').update({
+        'caregiver_password': _newPassController.text.trim()
+      }).eq('caregiver_id', supabase.auth.currentUser!.id);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
